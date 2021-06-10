@@ -1,0 +1,341 @@
+---
+title: "Introdução às Séries Temporais Financeiras"
+subtitle: "Conceitos e Aplicações em R"
+author: "Jailson Rodrigues"
+date: "1/26/2021"
+output: html_document
+---
+
+
+### Outline
++ Introdução
++ Séries financeiras e econômicas
+  + Fatos Estilizados
++ Aplicação
+    + Estudo de caso
+      + Grafico da série de preços
+      + Correlograma
+      + Retornos e log-retornos
+      + Correlograma dos retornos
+      + Retornos de quadráticos
+      + Teste para efeitos ARCH
+      + Ajuste do modelo GARCH(1,1)
+    + Avaliação
+    + Interpretação
++ Conclusão         
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library('quantmod')
+library(fGarch) # estimate GARCH and Forecast
+library(rugarch)
+library(urca) #Used for checking Unit root Cointegration
+library(fUnitRoots) #Used for conducting unit root test
+library(forecast) #Used for forecasting ARIMA model
+library('tbl2xts')
+library(timeSeries)
+library('ggthemes')
+library(ggplot2)
+library('data.table')
+library(magrittr)
+library(zoo)
+library(lubridate)
+library('e1071')
+library(stats)
+library("uroot")
+library(knitr)
+library('kableExtra')
+library(dplyr)
+library(tidyr)
+library('aTSA')
+
+
+tema = theme(axis.title = element_text(color='black'),
+             panel.background = element_blank(),
+             panel.grid.minor = element_line(linetype = 1),
+             plot.title=element_text(hjust = 0.5),
+             panel.grid.minor.x = element_line(color='black'),
+             panel.grid.minor.y = element_line(color='black'))
+```
+
+# Introdução
+
+"***All models are wrong, but some are usefull***" 
+
+-Geroge P. Box
+
+Parsimony principle:
+***Since all models are wrong the scientist cannot obtain a "correct" one by excessive elaboration.***
+
+
+
+---
+
+#### Modelos GARCH
+GARCH: Generalized Auto-Regresive Conditional Heteroscedasticity ou 
+Modelo Auto-Regresivo com Hereroscedasticidade Condicional Generalizado
+
+Quando a suposição de *resíduos homoscedásticos* (Variância não é constante) não é verificada os modelos convencionais como ***ARMA*** e ***ARIMA*** não são adequados, pois não foram criados para modelar esse tipo de carcterística.
+
+Para isso, utilizamos uma classe de modelos capaz de comportar a ***heteroscedasticidade***, muito presente nas séries temporais financeiras e econômicas.
+
+
+A expressão para o modelo GARCH(q, p) é dada a seguir:
+
+$$ r_t = \sigma_t \eta_t     $$
+
+
+$$\sigma_t^2 =  \omega+ \sum_{i=1}^q \alpha_{t-i}r_t^2+\sum_{j=1}^p \beta_{t-i}\sigma_{t-j}^2$$
+Em que:
+
+$\eta_t \sim N(0, 1)$ (NORMAL-GARCH)
+
+
+$r^2$: retornos observados elevados ao quadrado
+
+$\sigma_{t}$: Variância condicional no tempo 
+
+
+
+$\alpha$: Parâmetro que explica a taxa com a qual os choques do periodo anterior explicam os choques no periodo atual 
+
+$\beta$ Explica a persistencia dos choques na volatilidade, ou o por quanto tempo persistem influenciando a variabilidade da série temporal.
+
+
+As aplicações do modelo GARCH estão principalmente no ramo de Gestão de Risco, já que as empresas gostariam de saber que tipo de exposição seus ativos irão enfrentar no futuro.
+
+
+```{r pressure, echo=FALSE, results = 'hide'}
+options("getSymbols.warning4.0"=FALSE)
+getSymbols("AMZN")
+Pt <- AMZN$AMZN.Close
+
+```
+---
+
+## Fatos Estilizados
+
+Fatos estilizados são ***evidências visuais empiricas** que podemos observar no comportamento de alguns tipos de séries temporais tais quais econômicas e financeiras.
+
+  + Clusters de volatilidade
+  + Tendência evidente
+  + Variabilidade que muda ao longo do tempo (não constante)
+  + Choques causam efeitos persistentes na série
+  + Deslocamento ou Drift 
+  
+  
+
+# Aplicação
+
+A série temporal do preço da ação da Aamazon é mostrada no gráfico a seguir:
+
+```{r fig.width=6, fig.height=4}
+plot(AMZN$AMZN.Close,lwd=0.8,main= 'Cotação diária AMZN')
+```
+
+Perceba que diversos clusters de volatilidade estão presentes na série, principalmente entre os anos de 2018 e 2020.
+
+Modelos 
+Para avaliarmos melhor isso, podemos plotar o gráfico dos retornos quadráticos.
+
+---
+
+### Log-retornos
+```{r}
+
+#retornoS
+rt = na.omit(diff(log(Pt), lag=1))
+##rt <- log(1+retorno)
+
+```
+
+
+Utilizamos log-retorno devido a suas propriedades estatísticas, como estacionariedade e ergodicidade.
+
+Podemos descrever alguns fatos estiliazados que são encontrados na maioria das séries de retornos:
+ 
+  + Estacionariedade
+  + Fraca dependência linear e não linear
+  + Caudas pesadas na distribuição e excesso de curtose
+  + Comportamento heterocedástico condicional
+
+
+```{r fig.width=6, fig.height=4}
+par(mfrow = c(1,1))
+plot(rt, lwd = 0.6,main='log retornos para a série de preços das \nações da AMZN')
+```
+
+Perceba que o padrão visto acima caracteriza o fato estilizado cluster de volatilidade.
+Períodos com grandes variações tendem a ser seguidos por períodos com grandes variações.
+
+
+***Cont, Rama. Empirical properties of asset returns: stylized facts and statistical issues. (2001): 223-236)***
+
+```{r include=TRUE, results='hide',echo=FALSE, fig.width=6, fig.height=4}
+nbins = 1+3.3*log(length(rt$AMZN.Close))
+rt %>% data.frame() %>% ggplot()+
+  geom_histogram(aes(x = rt$AMZN.Close, y = ..density..),
+                 bins = 70,
+                 colour='grey90',
+                 fill='steelblue',alpha=0.8)+theme_bw()+
+  annotate(geom='label',
+            label = paste('Assimetria:',round(skewness(rt$AMZN.Close),3)),
+           x = -0.1,
+           y=20,col='steelblue',size=4,fill='grey90')+
+  annotate(geom='label',
+           label = paste('Curtose:',round(kurtosis(rt$AMZN.Close),3)),
+           x = -0.1,
+           y=18,col='steelblue',size=4,fill='grey90')+
+  stat_function(fun = dnorm, args =
+                  list(mean = mean(rt$AMZN.Close), sd = sd(rt$AMZN.Close)),colour='grey30')+
+  labs(x='Retornos',y='Densidade', title='Distribuição dos retornos da série de precos das ações AMZN')+
+  annotate(geom='label',
+           label = paste('Média:',round(mean(rt$AMZN.Close),5)),
+           x = 0.16,
+           y=20,col='black',size=4,fill='grey90')+
+  annotate(geom='label',
+           label = paste('Var:',round(sd(rt$AMZN.Close)^2,5)),
+           x = 0.16,
+           y=18,col='black',size=4,fill='grey90')
+
+
+```
+
+Uma característica bastante recorrente em séries financeiras é a presença de excesso de curtose, provocando caudas pesadas, como pode ser visto no histogama acima.
+
+```{r}
+ret_portifolio = data.frame((data.frame(rt) %>% rownames), 
+                            rt,
+                            rt^2,
+                            abs(rt)) 
+
+colnames(ret_portifolio) = c('Data','Retorno', 'Retorno_sq','Retorno_abs')  
+ret_portifolio %>% gather(Tiporetorno, Retono, -Data) -> ret_portifolio
+ret_portifolio$Data <- as.Date(ret_portifolio$Data) 
+```
+
+---
+
+Estatísticas descritivas para o log-retorno, log-retorno absoluto e quadrático
+
+```{r fig.width=5,fig.height=4}
+ret_portifolio %>% group_by(Tiporetorno) %>% summarise(Min =min(Retono),
+                                                       mu = mean(Retono), 
+                                                       DP = sd(Retono)^2, 
+                                                       Max = max(Retono)) %>%   kbl() %>%kable_material(c("striped", "hover"))
+
+
+```
+
+---
+ 
+
+Retornos absolutos são robustos na presença de outliers.
+Retornos quadráticos capturam menos essa variabilidade, porém são mais fáceis de tratar matemáticamente, por isso geralmente são preferíveis.
+
+```{r}
+par(mfrow = c(2,1))
+plot(abs(rt), lwd =0.6)
+plot(rt^2, lwd =0.6)
+
+```
+
+
+O correlograma dos retornos ordinários mostram evidencias de nao haver correlação linear, 
+mas os retornos de segunda ordemnos dizem que existe forte correlação não linear nos dados.
+
+```{r}
+par(mfrow=c(2,1))
+Acf((na.omit((rt))), main = 'Função de autocorrelação retornos ordinários')
+Acf((na.omit((rt^2))), main = 'Função de autocorrelação retornos quadráticos')
+stats::pacf((na.omit(abs(rt))), main = 'Função de autocorrelação retornos absolutos')
+```
+
+---
+
+### Teste de efeitos ARCH
+
+
+* Algoritmo para testar efeitos ARCH:
+  1) Especificar o modelo AR
+  2) Estimar via Mínimos Quadrados Ordinários ou MLE
+      não ha solucao analítica, mas saiba que $\hat{\sigma}^2 = f(r_t^2)$
+  3) Obeter os resíduos do modelo
+  4) Calcular os resíduos quadráticos
+  5) Performar o teste dos Multiplicadores de Lagrange
+
+$H_0:$ *Resíduos são Homoscedásticos*
+
+$H_1:$ *Presença de efeitos ARCH*
+
+Se os coeficientes ARCH forem significativos -> presença de heteroscedasticidade
+caso contrário, não temos indícios de heteroscedasticidade e nao haverá necessidade de utilizar modelos GARCH
+
+
+```{r}
+modelo_ar <- arima(Pt$AMZN.Close,order = c(5,2,1))
+summary(modelo_ar)
+arch.test(modelo_ar,output = TRUE)
+
+```
+
+Os testes acima nos dizem que temos indícios para crer na existência de efeitos ARCH.
+
+O teste de Engle, baseias-se no fato de que sob a hipótese nula que os resíduos são seguem um Ruído Branco. Caso sejam heteroscedásticos, os resíduos quadráticos serão autocorrelacionados.
+
+---
+
+### Estimando a volatilidade dos preços das ações da Amazon
+
+---
+
+#### Especificando um modelo ARMA-GARCH(1, 1)
+
+```{r}
+garch11 <- ugarchspec(
+    variance.model = list(model = c("sGARCH","gjrGARCH","eGARCH","fGARCH",
+                                    "apARCH")[1],
+                          garchOrder = c(1, 1)),
+    mean.model = list(armaOrder = c(1, 1), include.mean = TRUE),
+    distribution.model = c("norm", "snorm", "std", "sstd", "ged", "sged", "nig",
+                           "ghyp",
+                           "jsu")[1])
+```
+
+```{r}
+ajuste11 <- ugarchfit(garch11,rt)
+summary(ajuste11)
+```
+
+#### Volatilidade estimada
+
+```{r}
+vol <- ts(ajuste11@fit$sigma^2)
+plot.ts(vol)
+```
+
+#### Diagnóstico do modelo
+
+```{r}
+par(mfrow=c(2,1))
+acf(ajuste11@fit$residuals)
+pacf(ajuste11@fit$residuals)
+```
+
+```{r}
+hist(ajuste11@fit$residuals/sqrt(ajuste11@fit$sigma))
+```
+
+
+```{r}
+plot(ajuste11@fit$residuals/sqrt(ajuste11@fit$sigma))
+```
+
+
+```{r}
+plot(rnorm(3500,0,1))
+```
+
