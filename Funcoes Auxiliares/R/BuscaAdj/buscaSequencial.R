@@ -8,54 +8,25 @@ library(future.apply)
   sep="", 
   dec=".",header=TRUE)
 
-Reduce(`+`, )
-Reduce(?,l)
-
-dados10$clientID <- as.character(dados10$clientID)
-
-
-l |> purrr::flatten()
-d.f= dados10
-column = "clientID"
-split_appply_combine <- function(d.f, column = "clientID"){
+split_appply_combine <- function(d.f, column){
   plan(multiprocess, workers = 4)
-  ##SPLIT-APLLY-COMBINE
-
+    ##SPLIT-APLLY-COMBINE
   l = split(d.f, ~column)
-  l = lapply(l, function(x) return( x[x["data"] == max(x$data), ]))
-  l = lapply(l, function(x) return( x[x["hora"] == max(x$hora), ]))
-  lf = do.call(rbind, l)
+  l = future_lapply(l, function(x) return( x[x["data"] == max(x$data), ]))
+  l = future_lapply(l, function(x) return( x[x["hora"] == max(x$hora), ]))
+  lf = do.call(rbind, l3)
 
-  lf = split(lf, ~column)
-  lf = lapply(lf, `[`,1,)
+  rm(l)
+  gc(reset=TRUE)
+
+  rm(l3)
+  gc(reset=TRUE)
+
+  lf = split(lf, ~clientID)
+  lf = future_lapply(lf, `[`,1,)
   lf = do.call(rbind, lf)
   return(lf)
 }
-
-
-split_appply_combine(dados10)
-
-la %>% group_by(clientID) %>% summarise(count = n()) %>% arrange(count)
-dados10 %>% filter(clientID == "136731128.164882")
-dados10
-dados10[dados10["hora"] == max(dados10$hora),]
-
-l[[1]][["data"]==max(data),]
-l[[1]] %>% filter(data == max(data))
-str(dados10)
-
-
-min(dados10$data)
-sum(dados10$hora  == max(dados10$hora) )
-unique(dados10$clientID)  
-
-
-dados10 = read.csv("/home/jailson/Downloads/dados.txt",
-  sep=" ",
-  dec=".")
-
-
-sub(".*?que", "", v)
 
 log = function(d.f, .s){
     print(nrow(d.f))
@@ -126,24 +97,5 @@ b1 = Sys.time()
 
 b1-a1
 fim = do.call(rbind,l)
-
-
-dim(fim)
-View(fim)
-fim %>% arrange(X) %>%  View()
-str(l)
-
-install.packages("sqldf")
-
-
-sqldf("SELECT * 
-       FROM dados10
-       INNER JOIN(
-        SELECT max()
-
-
-       )
-
-
 
   ")
